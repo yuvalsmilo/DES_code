@@ -9,17 +9,18 @@ import numpy as np
 import matplotlib.pyplot as plt
 from landlab import RasterModelGrid
 from DE_Diffuser import DE_Diffuser
-
+import sys
+sys.setrecursionlimit(2000)
 
 # Domain parameters
-nrows = 30
-ncols = 3
+nrows = 10
+ncols = 10
 dx = 10
 
 grid = RasterModelGrid((int(nrows), int(ncols)), xy_spacing=int(dx))
-grid.set_closed_boundaries_at_grid_edges(True, True, True, False)
+grid.set_closed_boundaries_at_grid_edges(False, False, False, False)
 topo = grid.add_zeros('topographic__elevation', at='node')
-de_diffuser = DE_Diffuser(grid)
+de_diffuser = DE_Diffuser(grid, diffusivity=0.001)
 
 # main loop
 Ttot = 1000000
@@ -34,51 +35,65 @@ while t_clock < Ttot:
 
 fig, ax = plt.subplots(2,1,
                        figsize=(8,15))
-xvec = np.cumsum(np.ones_like(grid.at_node['topographic__elevation'][grid.nodes][:-1,1]) * grid.dx)
+xvec = np.cumsum(np.ones_like(grid.at_node['topographic__elevation'][grid.nodes][:,1]) * grid.dx)
 for n in range(2):
-    ax[n].plot(xvec, grid.at_node['topographic__elevation'][grid.nodes][:-1,1], color = 'black', linewidth=3)
+    ax[n].plot(xvec, grid.at_node['topographic__elevation'][grid.nodes][:,1], color = 'black', linewidth=3)
     ax[n].set_xlabel('Distance [m]')
     ax[n].set_ylabel('Elevation [m]')
     if n ==1:
         ax[n].set_aspect('equal', 'box')
 
 plt.show()
-
-
-
-grid = RasterModelGrid((int(nrows), int(ncols)), xy_spacing=int(dx))
-grid.set_closed_boundaries_at_grid_edges(True, True, True, False)
-topo = grid.add_zeros('topographic__elevation', at='node')
-hillslope__diffusivity = grid.add_ones('hillslope__diffusivity', at='node')
-hillslope__diffusivity *= 0.001
-start_low_d = 4
-end_low_d = 9
-hillslope__diffusivity[grid.nodes[start_low_d:end_low_d, 1]] *= 0.4
-de_diffuser = DE_Diffuser(grid,
-                          diffusivity =hillslope__diffusivity)
-
-Ttot = 10000000
-
-t_clock = de_diffuser._t_clock
-while t_clock < Ttot:
-    de_diffuser.select_and_update_event()
-    de_diffuser.event_synchronization()
-    de_diffuser.event_scheduling()
-    t_clock = de_diffuser._t_clock
-    print('time = ', np.round(t_clock,1), ' -->  ', np.round(t_clock/Ttot,2), ' % out of Ttot')
 
 fig, ax = plt.subplots(2,1,
                        figsize=(8,15))
-xvec = np.cumsum(np.ones_like(grid.at_node['topographic__elevation'][grid.nodes][:-1,1]) * grid.dx)
+xvec = np.cumsum(np.ones_like(grid.at_node['topographic__elevation'][grid.nodes][5,:]) * grid.dx)
 for n in range(2):
-    ax[n].plot(xvec, grid.at_node['topographic__elevation'][grid.nodes][:-1,1], color = 'black', linewidth=3)
-    ax[n].plot(xvec[start_low_d: end_low_d],grid.at_node['topographic__elevation'][grid.nodes][start_low_d:end_low_d,1], color = 'red', linewidth=3)
+    ax[n].plot(xvec, grid.at_node['topographic__elevation'][grid.nodes][5,:], color = 'black', linewidth=3)
     ax[n].set_xlabel('Distance [m]')
     ax[n].set_ylabel('Elevation [m]')
     if n ==1:
         ax[n].set_aspect('equal', 'box')
 
 plt.show()
+
+from landlab import imshow_grid
+imshow_grid(grid,grid.at_node['topographic__elevation'])
+plt.show()
+#
+# grid = RasterModelGrid((int(nrows), int(ncols)), xy_spacing=int(dx))
+# grid.set_closed_boundaries_at_grid_edges(True, True, True, False)
+# topo = grid.add_zeros('topographic__elevation', at='node')
+# hillslope__diffusivity = grid.add_ones('hillslope__diffusivity', at='node')
+# hillslope__diffusivity *= 0.001
+# start_low_d = 4
+# end_low_d = 9
+# hillslope__diffusivity[grid.nodes[start_low_d:end_low_d, 1]] *= 0.4
+# de_diffuser = DE_Diffuser(grid,
+#                           diffusivity =hillslope__diffusivity)
+#
+# Ttot = 10000000
+#
+# t_clock = de_diffuser._t_clock
+# while t_clock < Ttot:
+#     de_diffuser.select_and_update_event()
+#     de_diffuser.event_synchronization()
+#     de_diffuser.event_scheduling()
+#     t_clock = de_diffuser._t_clock
+#     print('time = ', np.round(t_clock,1), ' -->  ', np.round(t_clock/Ttot,2), ' % out of Ttot')
+#
+# fig, ax = plt.subplots(2,1,
+#                        figsize=(8,15))
+# xvec = np.cumsum(np.ones_like(grid.at_node['topographic__elevation'][grid.nodes][:-1,1]) * grid.dx)
+# for n in range(2):
+#     ax[n].plot(xvec, grid.at_node['topographic__elevation'][grid.nodes][:-1,1], color = 'black', linewidth=3)
+#     ax[n].plot(xvec[start_low_d: end_low_d],grid.at_node['topographic__elevation'][grid.nodes][start_low_d:end_low_d,1], color = 'red', linewidth=3)
+#     ax[n].set_xlabel('Distance [m]')
+#     ax[n].set_ylabel('Elevation [m]')
+#     if n ==1:
+#         ax[n].set_aspect('equal', 'box')
+#
+# plt.show()
 
 
 # OLD  VERSION - BEFORE CREATING THE COMPONENT

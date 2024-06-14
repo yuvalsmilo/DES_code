@@ -75,11 +75,11 @@ class DE_Diffuser(Component):
                  uplift_rate=0.0001,
                  diffusivity = 0.01,
                  ALPHA = 0.7,
-                 delta_f_max = 1,   # delta_f_max > 0
-                 w_lim = 1,       # 0 < w_lim <=1
+                 delta_f_max = 0.1,   # delta_f_max > 0
+                 w_lim = 0.25,       # 0 < w_lim <=1
                  lamda_min = 1.1,   # lambda_min > 1
-                 Wcfl = 0.5,        # 0 < _Wcfl <= 1
-                 epsilon = 0.001,
+                 Wcfl = 1,        # 0 < _Wcfl <= 1
+                 epsilon = 10**-14,
                  t_clock = 0.0,     # simulation time
                  ):
 
@@ -116,7 +116,7 @@ class DE_Diffuser(Component):
 
     def _calc_cfl_dt(self,):
 
-
+        delta_f_threhold = self._grid.at_node['delta_f__threshold']
         diffusivity= self._grid.at_node["hillslope__diffusivity"]
 
         CFL_prefactor = (
@@ -127,16 +127,17 @@ class DE_Diffuser(Component):
             np.divide(CFL_prefactor,
                       diffusivity,
                       )
-        )
+        )*0.1
 
 
+        delta_f_threhold[:] = self._delta_f_max
     def _init_Qlist(self):
 
         sorted_ids = np.argsort(self._cfl_dt_at_nodes)
         sorted_ids = sorted_ids[np.isin(sorted_ids, self._grid.core_nodes)]
         self._Qlist['node_id'] = self._flatten_nodes[sorted_ids]
         self._Qlist['t_p'] = np.zeros_like(self._cfl_dt_at_nodes[sorted_ids])  # dt at node
-        self._Qlist['next_update_time'] = self._t_clock
+        self._Qlist['next_update_time'] = self._cfl_dt_at_nodes[sorted_ids]
         self._Qlist.set_index('node_id', inplace=True)
         self._Qlist.sort_values(by=['next_update_time'], inplace=True)
 
@@ -184,7 +185,7 @@ class DE_Diffuser(Component):
         Qlist = self._Qlist
         R = self._grid.at_node['R']
         topo = self._grid.at_node['topographic__elevation']
-        neighbors = grid.active_adjacent_nodes_at_node[node_id_at_work]
+        neighbors = grid.adjacent_nodes_at_node[node_id_at_work]
         flux_capacitor = grid.at_node['flux__capacitor']
         delta_f_threhold = grid.at_node['delta_f__threshold']
 
@@ -210,17 +211,14 @@ class DE_Diffuser(Component):
                 Qlist.loc[neighbor, 't_p'] = t_s
                 if np.abs(delta_f_cap) >= delta_f_threhold[neighbor]:
                     flux_capacitor[neighbor] = 0.0
-                    #self.event_synchronization(parent_node = neighbor, parents = parents)
-                    #parents  = None
                     self.run_one_event(parent = neighbor, parents=parents)
                     return
                 else:
 
                     self._correct_flux_between_nodes(node_s=neighbor, node_p=node_id_at_work)
 
-            if grid.node_is_boundary(neighbor) == True:
-                if grid._node_status[neighbor] == 1:
-                    self._correct_flux_between_nodes(node_s = neighbor, node_p = node_id_at_work)
+            if grid.node_is_boundary(neighbor) == True & neighbor>0:
+                self._correct_flux_between_nodes(node_s = neighbor, node_p = node_id_at_work)
         return
 
     def event_scheduling(self, parent = None):
@@ -233,19 +231,18 @@ class DE_Diffuser(Component):
         grid = self._grid
         Qlist = self._Qlist
         R = self._grid.at_node['R']
+        delta_f_threhold = grid.at_node['delta_f__threshold']
 
         # Calc out and in fluxes
         fluxes_in, fluxes_out = self._calc_flux_at_node(node_id_at_work)
 
         R[node_id_at_work] = ((np.sum(fluxes_in) - np.sum(fluxes_out)) / grid.dx) + uplift_rate
-
-        delta_f_p_threshold = self._compute_local_target_increment(node_id_at_work)
-
-        if delta_f_p_threshold == np.inf:
+        temp_delta_f_p_threshold = self._compute_local_target_increment(node_id_at_work)
+        if temp_delta_f_p_threshold== np.inf:
             Qlist.loc[node_id_at_work, 'next_update_time'] = np.inf
             return
-        delta_tp = np.divide(delta_f_p_threshold, np.abs(R[node_id_at_work]))
-
+        delta_f_threhold[node_id_at_work] =temp_delta_f_p_threshold
+        delta_tp = np.divide(temp_delta_f_p_threshold, np.abs(R[node_id_at_work]))
         Qlist.loc[node_id_at_work, 'next_update_time'] = self._t_clock + delta_tp
 
     def _compute_local_target_increment(self, node_id_at_work):
@@ -260,7 +257,7 @@ class DE_Diffuser(Component):
         lamda_min = self._lamda_min
         delta_f_max = self._delta_f_max
 
-        neighbors = grid.active_adjacent_nodes_at_node[node_id_at_work]
+        neighbors = grid.adjacent_nodes_at_node[node_id_at_work]
         neighbors = neighbors[np.isin(neighbors, grid.core_nodes)]
         delta_f_cfl = np.abs(R[node_id_at_work]) * _Wcfl * cfl_dt_at_nodes[node_id_at_work]
         if delta_f_cfl < epsilon:
@@ -329,6 +326,12 @@ class DE_Diffuser(Component):
             link =  grid.links_at_node[node_s][try_head][0]
         else:
             link = -1
+
+        if node_s > 0:
+            if np.any([grid._node_status[node_s]==4, grid._node_status[node_p]== 4]):
+                sediment_flux[link] = 0.0
+                R[node_s] = 0.0
+                return
 
         gtopo[link] = (topo[grid.node_at_link_head[link]] - topo[grid.node_at_link_tail[link]]) / grid.dx
         diffusivity_at_link = grid.map_node_to_link_linear_upwind(grid.at_node['hillslope__diffusivity'],
