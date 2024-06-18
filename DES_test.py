@@ -10,20 +10,36 @@ import matplotlib.pyplot as plt
 from landlab import RasterModelGrid
 from DE_Diffuser import DE_Diffuser
 import sys
-sys.setrecursionlimit(2000)
+from landlab.components import LinearDiffuser
+from landlab import imshow_grid
+
+sys.setrecursionlimit(4000)
 
 # Domain parameters
-nrows = 10
-ncols = 10
+nrows = 500
+ncols = 500
 dx = 10
 
 grid = RasterModelGrid((int(nrows), int(ncols)), xy_spacing=int(dx))
 grid.set_closed_boundaries_at_grid_edges(False, False, False, False)
 topo = grid.add_zeros('topographic__elevation', at='node')
-de_diffuser = DE_Diffuser(grid, diffusivity=0.001)
+grid.add_zeros('linear_diffusivity',
+               at="node")
+D = grid.at_node['linear_diffusivity']
+diffusivity = 0.001
+D[:] = diffusivity
+D[grid.nodes[:,1]]= 0.0001
 
+uplift_rate=0.0001
+de_diffuser = DE_Diffuser(grid, diffusivity=D,
+                          uplift_rate=uplift_rate,
+                          delta_f_max = 1,
+                          lamda_min=1,
+                          w_lim=1,
+                          cfl_factor=0.1)
 # main loop
-Ttot = 1000000
+Ttot = 100000
+
 
 t_clock = de_diffuser._t_clock
 while t_clock < Ttot:
@@ -31,7 +47,9 @@ while t_clock < Ttot:
     de_diffuser.event_synchronization()
     de_diffuser.event_scheduling()
     t_clock = de_diffuser._t_clock
-    print('time = ', np.round(t_clock,1), ' -->  ', np.round(t_clock/Ttot,2), ' % out of Ttot')
+    #print(t_clock)
+
+
 
 fig, ax = plt.subplots(2,1,
                        figsize=(8,15))
@@ -57,10 +75,70 @@ for n in range(2):
 
 plt.show()
 
-from landlab import imshow_grid
+
 imshow_grid(grid,grid.at_node['topographic__elevation'])
 plt.show()
-#
+
+
+
+## 'Time-driven' simulation using Landlab LinearDiffuser component
+
+grid = RasterModelGrid((int(nrows), int(ncols)), xy_spacing=int(dx))
+grid.set_closed_boundaries_at_grid_edges(False, False, False, False)
+topo = grid.add_zeros('topographic__elevation', at='node')
+grid.add_zeros('linear_diffusivity',
+               at="node")
+DD = grid.at_node['linear_diffusivity']
+DD[:] = D*10
+
+Ttot = 100000
+tl_diff = LinearDiffuser(grid, linear_diffusivity='linear_diffusivity')
+t_clock = 0.0
+dt = 50
+while t_clock < Ttot:
+    tl_diff.run_one_step(dt = dt)
+    topo[grid.core_nodes] += uplift_rate*dt
+    t_clock+=dt
+    print(t_clock)
+
+
+
+fig, ax = plt.subplots(2,1,
+                       figsize=(8,15))
+xvec = np.cumsum(np.ones_like(grid.at_node['topographic__elevation'][grid.nodes][:,1]) * grid.dx)
+for n in range(2):
+    ax[n].plot(xvec, grid.at_node['topographic__elevation'][grid.nodes][:,1], color = 'black', linewidth=3)
+    ax[n].set_xlabel('Distance [m]')
+    ax[n].set_ylabel('Elevation [m]')
+    if n ==1:
+        ax[n].set_aspect('equal', 'box')
+
+plt.show()
+
+fig, ax = plt.subplots(2,1,
+                       figsize=(8,15))
+xvec = np.cumsum(np.ones_like(grid.at_node['topographic__elevation'][grid.nodes][5,:]) * grid.dx)
+for n in range(2):
+    ax[n].plot(xvec, grid.at_node['topographic__elevation'][grid.nodes][5,:], color = 'black', linewidth=3)
+    ax[n].set_xlabel('Distance [m]')
+    ax[n].set_ylabel('Elevation [m]')
+    if n ==1:
+        ax[n].set_aspect('equal', 'box')
+
+plt.show()
+
+
+
+imshow_grid(grid,grid.at_node['topographic__elevation'])
+plt.show()
+
+
+
+
+
+
+
+
 # grid = RasterModelGrid((int(nrows), int(ncols)), xy_spacing=int(dx))
 # grid.set_closed_boundaries_at_grid_edges(True, True, True, False)
 # topo = grid.add_zeros('topographic__elevation', at='node')
